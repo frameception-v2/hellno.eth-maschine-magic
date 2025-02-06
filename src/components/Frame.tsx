@@ -13,6 +13,9 @@ import {
   CardDescription,
   CardContent,
 } from "~/components/ui/card";
+import { Button } from "~/components/ui/button";
+import { Skeleton } from "~/components/ui/skeleton";
+import { useAccount, useBalance } from "wagmi";
 
 import { config } from "~/components/providers/WagmiProvider";
 import { truncateAddress } from "~/lib/truncateAddress";
@@ -22,17 +25,74 @@ import { createStore } from "mipd";
 import { Label } from "~/components/ui/label";
 import { PROJECT_TITLE } from "~/lib/constants";
 
-function ExampleCard() {
+function WalletDemoCard() {
+  const { address, isConnected } = useAccount();
+  const { data: balance, isLoading } = useBalance({
+    address,
+  });
+
+  const [mockTxHash, setMockTxHash] = useState<string>();
+
+  const handleMaschineAction = useCallback(() => {
+    // Simulate a transaction hash
+    setMockTxHash(`0x${Math.random().toString(16).slice(2)}`);
+  }, []);
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Welcome to the Frame Template</CardTitle>
+        <CardTitle>🪄 Maschine Magic</CardTitle>
         <CardDescription>
-          This is an example card that you can customize or remove
+          Experience next-gen wallet interactions
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <Label>Place content in a Card here.</Label>
+      <CardContent className="space-y-4">
+        {!isConnected ? (
+          <div className="text-center">
+            <p className="mb-4">Connect your wallet to begin</p>
+            <Button onClick={() => connect({ connector: config.connectors[0] })}>
+              Connect Wallet
+            </Button>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-2">
+              <Label>Connected Wallet</Label>
+              <div className="font-mono text-sm">
+                {truncateAddress(address)}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Balance</Label>
+              {isLoading ? (
+                <Skeleton className="h-4 w-[100px]" />
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="font-mono">
+                    {parseFloat(balance?.formatted || '0').toFixed(4)}
+                  </span>
+                  <span className="text-sm text-muted-foreground">
+                    {balance?.symbol}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <Button 
+              onClick={handleMaschineAction}
+              variant="secondary"
+            >
+              Perform Maschine Magic
+            </Button>
+
+            {mockTxHash && (
+              <div className="text-sm text-muted-foreground">
+                TX: {truncateAddress(mockTxHash)}
+              </div>
+            )}
+          </>
+        )}
       </CardContent>
     </Card>
   );
@@ -41,90 +101,41 @@ function ExampleCard() {
 export default function Frame() {
   const [isSDKLoaded, setIsSDKLoaded] = useState(false);
   const [context, setContext] = useState<Context.FrameContext>();
-
-  const [added, setAdded] = useState(false);
-
-  const [addFrameResult, setAddFrameResult] = useState("");
-
-  const addFrame = useCallback(async () => {
-    try {
-      await sdk.actions.addFrame();
-    } catch (error) {
-      if (error instanceof AddFrame.RejectedByUser) {
-        setAddFrameResult(`Not added: ${error.message}`);
-      }
-
-      if (error instanceof AddFrame.InvalidDomainManifest) {
-        setAddFrameResult(`Not added: ${error.message}`);
-      }
-
-      setAddFrameResult(`Error: ${error}`);
-    }
-  }, []);
+  const { data: session } = useSession();
 
   useEffect(() => {
     const load = async () => {
       const context = await sdk.context;
-      if (!context) {
-        return;
-      }
-
       setContext(context);
-      setAdded(context.client.added);
-
-      // If frame isn't already added, prompt user to add it
-      if (!context.client.added) {
-        addFrame();
-      }
-
-      sdk.on("frameAdded", ({ notificationDetails }) => {
-        setAdded(true);
-      });
-
-      sdk.on("frameAddRejected", ({ reason }) => {
-        console.log("frameAddRejected", reason);
-      });
-
-      sdk.on("frameRemoved", () => {
-        console.log("frameRemoved");
-        setAdded(false);
-      });
-
-      sdk.on("notificationsEnabled", ({ notificationDetails }) => {
-        console.log("notificationsEnabled", notificationDetails);
-      });
-      sdk.on("notificationsDisabled", () => {
-        console.log("notificationsDisabled");
-      });
-
-      sdk.on("primaryButtonClicked", () => {
-        console.log("primaryButtonClicked");
-      });
-
-      console.log("Calling ready");
+      
       sdk.actions.ready({});
-
-      // Set up a MIPD Store, and request Providers.
-      const store = createStore();
-
-      // Subscribe to the MIPD Store.
-      store.subscribe((providerDetails) => {
-        console.log("PROVIDER DETAILS", providerDetails);
-        // => [EIP6963ProviderDetail, EIP6963ProviderDetail, ...]
+      
+      // Setup wallet connection listeners
+      sdk.on('walletConnected', ({ address }) => {
+        console.log('Wallet connected:', address);
       });
-    };
-    if (sdk && !isSDKLoaded) {
-      console.log("Calling load");
+      
+      sdk.on('transactionSent', ({ hash }) => {
+        console.log('Transaction sent:', hash);
+      });
+
       setIsSDKLoaded(true);
+    };
+
+    if (!isSDKLoaded) {
       load();
-      return () => {
-        sdk.removeAllListeners();
-      };
     }
-  }, [isSDKLoaded, addFrame]);
+
+    return () => sdk.removeAllListeners();
+  }, [isSDKLoaded]);
 
   if (!isSDKLoaded) {
-    return <div>Loading...</div>;
+    return (
+      <div className="w-[300px] mx-auto py-2 px-2">
+        <Skeleton className="h-8 w-full mb-4" />
+        <Skeleton className="h-[300px] w-full" />
+      </div>
+    );
   }
 
   return (
@@ -140,7 +151,7 @@ export default function Frame() {
         <h1 className="text-2xl font-bold text-center mb-4 text-gray-700 dark:text-gray-300">
           {PROJECT_TITLE}
         </h1>
-        <ExampleCard />
+        <WalletDemoCard />
       </div>
     </div>
   );
